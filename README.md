@@ -204,11 +204,24 @@ Ese endpoint es recomendado para tu backend, aunque depende de tu implementació
 - El `sqlserver-init` usa la misma imagen de SQL Server para tener `sqlcmd` disponible. Es simple, aunque no es la imagen más liviana.
 - El seed SQL facilita demo y pruebas, pero en producción se quitaría.
 
+## CI Pipelines
+
+Ambos repos tienen GitHub Actions CI configurado en `.github/workflows/ci.yml`:
+
+- **incident-api**: lint, build y test en cada push/PR a `main`.
+- **incident-web**: lint, build y test en cada push/PR a `main`.
+
+Ambos pipelines usan Node.js 20 con cache de npm.
+
+## Performance SQL
+
+El indice `IX_Incidents_List` esta optimizado para el endpoint principal de listado.
+Se documento la evidencia del plan de ejecucion en [`docs/sql-performance.md`](docs/sql-performance.md).
+
 ## Pendientes opcionales
 
 - Agregar Redis
 - Agregar healthcheck en NestJS
-- Agregar CI
 - Agregar perfiles `dev` y `test` en Compose
 
 ## Siguiente paso recomendado

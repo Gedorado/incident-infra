@@ -50,6 +50,18 @@ services:
       retries: 20
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    container_name: incident-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   service-catalog-mock:
     build:
       context: ./mock-service-catalog
@@ -79,6 +91,8 @@ services:
         condition: service_healthy
       service-catalog-mock:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -90,6 +104,9 @@ services:
       MONGO_URI: mongodb://mongo:27017/${MONGO_DB_NAME:-incidentdb}
       MONGO_DB_NAME: ${MONGO_DB_NAME:-incidentdb}
       SERVICE_CATALOG_BASE_URL: http://service-catalog-mock:3001
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: incident-secret-key
     ports:
       - "3000:3000"
 
