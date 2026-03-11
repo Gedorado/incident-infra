@@ -1,0 +1,111 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: incident-sqlserver
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: ${SQL_SA_PASSWORD:-YourStrong@Passw0rd}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -No -Q \"SELECT 1\" || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 25s
+
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: incident-sqlserver-init
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      SQL_SA_PASSWORD: ${SQL_SA_PASSWORD:-YourStrong@Passw0rd}
+      SQL_DB_NAME: ${SQL_DB_NAME:-incidentdb}
+    volumes:
+      - ./sql:/work/sql:ro
+      - ./scripts:/work/scripts:ro
+    entrypoint: ["/bin/bash", "/work/scripts/init-db.sh"]
+    restart: "no"
+
+  mongo:
+    image: mongo:7
+    container_name: incident-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  service-catalog-mock:
+    build:
+      context: ./mock-service-catalog
+    container_name: incident-service-catalog-mock
+    environment:
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  incident-api:
+    build:
+      context: ../incident-api
+      dockerfile: Dockerfile
+    container_name: incident-api
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      sqlserver-init:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
+      service-catalog-mock:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      SQL_HOST: sqlserver
+      SQL_PORT: 1433
+      SQL_USER: sa
+      SQL_PASSWORD: ${SQL_SA_PASSWORD:-YourStrong@Passw0rd}
+      SQL_DB_NAME: ${SQL_DB_NAME:-incidentdb}
+      MONGO_URI: mongodb://mongo:27017/${MONGO_DB_NAME:-incidentdb}
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-incidentdb}
+      SERVICE_CATALOG_BASE_URL: http://service-catalog-mock:3001
+    ports:
+      - "3000:3000"
+
+  incident-web:
+    build:
+      context: ../incident-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3000
+    container_name: incident-web
+    depends_on:
+      incident-api:
+        condition: service_started
+    ports:
+      - "5173:80"
+
+volumes:
+  sqlserver_data:
+  mongo_data:
